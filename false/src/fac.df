@@ -1,0 +1,10 @@
+{ factorial program in false! }
+
+[$1=~[$1-f;!*]?]f:          { fac() in false }
+
+"calculate the factorial of [1..9]: "
+^'0-$$0>~\9>|$
+"result: "
+~[\f;!.]?
+["illegal input!"]?"
+"
