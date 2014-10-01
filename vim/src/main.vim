@@ -108,6 +108,119 @@
 " endfor
 " unlet x y rest
 
-let xs = [1, 2, 3]
-echo xs
-unlet xs
+" delfunc Func
+" func Func(a, b, c)
+" 	return -1
+" endfunc
+" 
+" let xs = [1, 2, 3]
+" 
+" let r = call("Func", xs)
+" echo r
+" unlet xs
+
+" func! F()
+" 	 let x = split("a b c a")
+" 	 echo x 'len =' len(x)
+" 	 echo 'max =' max(x)
+" 	 echo 'min =' min(x)
+" 	 let i = index(x, 'b')
+" 	 echo i
+" 	 echo 'a =' count(x, 'a')
+" 	 echo join(x, ',')
+" 	 let lines = getline(1, 10)
+" 	 echo string(lines)
+" 	let ys = [1, 2, 3]
+" 	exe 'let sum = ' . join(ys, '+')
+" 	echo sum
+" 	 let s = string(ys)
+" 	 echo s
+" 	 call map(ys, '">>" . v:val')
+" 	 echo ys
+" 	 call append('^', x)
+" endfunc
+
+" func! F() 
+" 	let dict = {'a': 'echo "haha"', 'b': 'echo lala'}
+" 	exe dict.a
+" 	for k in keys(dict)
+" 		echo k
+" 	endfor
+" 	for k in values(dict)
+" 		echo k
+" 	endfor
+" 	for i in items(dict)
+" 		echo i
+" 	endfor
+" 	" echo filter(dict, 'v:val =~ "haha"')
+" 	" call remove(dict, 'b')
+" 	" echo dict
+" 
+" 	" func dict.len() dict
+" 	" 	return len(self.a)+len(self.b)
+" 	" endfunc
+" 	" echo dict.len()
+" 	echo max(dict)
+" 	echo min(dict)
+" 	echo has_key(dict, 'a')
+" endfunc
+
+func! F(lnum, ...)
+	" echo 'a' ==? 'A'
+	" echo 'a' ==# 'A'
+	" echo 'a' <=? 'B'
+	" echo 'a' <=# 'B'
+	" echo 'aabb' =~ 'a*b*'
+	" echo 'aabb' !~ 'a*b*'
+	" let x = 'abcde'
+	" echo x[2:3]
+	" echo &cindent $PWD
+	" echo @r
+	" echo 'jude' a:lnum == 1
+	" 			\? "top"
+	" 			\: a:lnum == 1000
+	" 			\? "last"
+	" 			\: a:lnum
+	" echo "foo\nbar" =~ "\n"
+	" echo "foo\nbar" =~ "\\n"
+	" echo getline(".")[col(".")-1]
+	" echo 'abc' . 'abc'
+	" let dict = {'one': 1, 2: 'two'}
+	" echo printf('%.15e', atan(1))
+	" echo "\X32"
+
+	" for k in keys(a:)
+	" 	echo k "=" a:[k]
+	" endfor
+
+	" echo argv()
+	" echo bufname(1)
+	" echo changenr()
+	" echo complete_check()
+	" echo cursor([1,1])
+	" echo escape("abcd", "a")
+	" echo feedkeys("abcd")
+	" echo getcwd()
+	" echo getfsize(bufname(1))
+	" echo getreg()
+	" echo printf("(%d, %d)", getwinposx(), getwinposy())
+	" echo indent(getline('.'))
+	" echo search("echo")
+	" echo setline(211, 209)
+	" echo wincol()
+	" echo cindent('.')
+	" echo getpos('.')
+	" echo input("fuck>>")
+	" echo inputsecret("fuck>>")
+	echohl Title
+	echo has("cindent")
+	echo a:000
+	echohl None
+	" sleep 10
+	let line = getpos('.')[1]
+	echo line
+	echo prevnonblank(line-1)
+	echo indent(getpos('.')[1])
+endfunc
+
+call F(19, 1, 1, 1)
