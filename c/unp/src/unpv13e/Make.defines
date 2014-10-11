@@ -6,12 +6,12 @@
 # The "../" in the pathnames actually refer to this directory, since
 # "make" is executed in all the subdirectories of this directory.
 #
-# System = i686-pc-linux-gnu
+# System = i386-apple-darwin13.4.0
 
 CC = gcc
 CFLAGS = -I../lib -g -O2 -D_REENTRANT -Wall
-LIBS = ../libunp.a -lpthread
-LIBS_XTI = ../libunpxti.a ../libunp.a -lpthread
+LIBS = ../libunp.a -lresolv -lpthread
+LIBS_XTI = ../libunpxti.a ../libunp.a -lresolv -lpthread
 RANLIB = ranlib
 
 # Following is the main library, built from all the object files
