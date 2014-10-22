@@ -1,0 +1,1 @@
+("6.1" ("4002a544c57b6d96606390b2a6bca3b2af16e67e" . "1f018696b43cd9824d701656df792472d6776837") (collects #"pict" #"flash.rkt") (collects #"slideshow" #"main.rkt") #"/Users/dwylkz/Library/Racket/planet/300/6.1/cache/schematics/random.plt/1/0/random.rkt" (collects #"racket" #"runtime-config.rkt"))
