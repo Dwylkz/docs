@@ -623,4 +623,59 @@
 
     (write (make-list 10 'a))
     ))
-(e4)
+; (e4)
+
+(define e5
+  (lambda ()
+    ; (define x #f)
+
+    (define reenter #f)
+    (define x 0)
+    (write
+      (fluid-let ([x 1])
+                 (call/cc (lambda (k) (set! reenter k)))
+                 (set! x (+ x 1))
+                 x))
+    (write reenter)
+    (newline)
+    (write (reenter))
+    (newline)
+
+    ; (dynamic-wind
+    ;   (lambda () (write "in"))
+    ;   (lambda () (write "body"))
+    ;   (lambda () (write "out")))
+    ; (newline)
+
+    ; (write (fluid-let
+    ;          ([x 1])
+    ;          x))
+    ; (newline)
+
+    ; (write x)
+    ; (newline)
+    '()))
+; (e5)
+
+(define e5.7
+  (lambda ()
+    (define stream-car
+      (lambda (s)
+        (car (force s))))
+    (define stream-cdr
+      (lambda (s)
+        (cdr (force s))))
+    (define counter
+      (let next ([n 0])
+        (write 'eval)
+        (newline)
+        (delay (cons n (next (+ n 1))))))
+
+    (write (stream-car counter))
+    (newline)
+    (write (stream-car counter))
+    (newline)
+    (write (stream-car (stream-cdr counter)))
+    (newline)
+    '()))
+; (e5.7)
