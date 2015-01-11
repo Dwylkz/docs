@@ -29,7 +29,7 @@ srv:
 
 cli:
 	@#./main tcpcli01 $(HOST) $(PORT) 0
-	@./main pluscli $(HOST) $(PORT)
+	@./main replcli $(HOST) $(PORT)
 
 test:
 	@#./main multireq 10 $(HOST)

@@ -731,8 +731,7 @@ static int plus_srvaction(int sock)
     int a, b;
     if (sscanf(foo, "%d%d", &a, &b) != 2) {
       sprintf(bar, "invalid input (%s), expect two integer or 'end'\n", foo);
-    }
-    else {
+    } else {
       sprintf(bar, "%d\n", a+b);
     }
 
@@ -744,20 +743,25 @@ static int plus_srvaction(int sock)
   }
   return 0;
 }
-static int plus_cliaction(int sock)
+static int plussrv(int argc, char** argv)
+{
+  return srv_frame(argc, argv, plus_srvaction);
+}
+
+static int repl_cliaction(int sock)
 {
   int ret;
 
   time_t begin = time(NULL);
-  puts("welcome to plussrv");
   printf("start at %s", ctime(&begin));
 
   char foo[BUFSIZ+1];
   while (1) {
-    printf("plussrv> ");
+    printf("> ");
     char* str = fgets(foo, BUFSIZ, stdin);
     if (str == NULL) {
       if (feof(stdin) != 0) {
+        puts("");
         sprintf(foo, "end");
       } else if (ferror(stdin) != 0) {
         DLIB_ERR("%d: fgets: msg=(%s)", errno, dlib_syserr());
@@ -788,13 +792,9 @@ static int plus_cliaction(int sock)
   }
   return 0;
 }
-static int plussrv(int argc, char** argv)
+static int replcli(int argc, char** argv)
 {
-  return srv_frame(argc, argv, plus_srvaction);
-}
-static int pluscli(int argc, char** argv)
-{
-  return cli_frame(argc, argv, plus_cliaction);
+  return cli_frame(argc, argv, repl_cliaction);
 }
 
 int main(int argc, char** argv)
@@ -813,7 +813,7 @@ int main(int argc, char** argv)
     DLIB_CMD_DEFINE(tcpcli01test, "<times> <ip-address> <port>"),
     DLIB_CMD_DEFINE(echosrv, "<port>"),
     DLIB_CMD_DEFINE(plussrv, "<port>"),
-    DLIB_CMD_DEFINE(pluscli, "<host> <port>"),
+    DLIB_CMD_DEFINE(replcli, "<host> <port>"),
     DLIB_CMD_NULL
   };
   return dlib_subcmd(argc, argv, cmds);
