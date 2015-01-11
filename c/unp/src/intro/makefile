@@ -1,8 +1,9 @@
 CC = gcc
-CFLAGS = -I../unpv13e/lib -Idlib/src -g -O2 -D_REENTRANT -Wall
+CFLAGS = -I../unpv13e/lib -Idlib/src -g -O2 -D_REENTRANT 
 LIBS = ../unpv13e/libunp.a -lpthread dlib/src/libdlib.a
 
 HOST = 127.0.0.1
+PORT = 60008
 HOST6 = ::1
 
 all:
@@ -22,17 +23,32 @@ run:
 
 srv:
 	@#./main daytimetcpsrv
-	@./main tcpserv01
+	@#./main tcpserv01
+	@#./main echosrv $(PORT)
+	@./main plussrv $(PORT)
 
 cli:
-	@./main tcpcli01 $(HOST) 0
+	@#./main tcpcli01 $(HOST) $(PORT) 0
+	@./main pluscli $(HOST) $(PORT)
 
 test:
 	@#./main multireq 10 $(HOST)
-	@echo "test" | ./main tcpcli01test 10 $(HOST) 1
+	@echo "test" | ./main tcpcli01test 10 $(HOST) $(PORT) 1
+
+l:
+	@ps -ott,pid,ppid,stat,nwchan,command
+
+n:
+	@netstat -finet -ptcp | grep $(PORT)
+
+t:
+	@telnet $(HOST) $(PORT)
 
 clean:
 	rm -f $(PROGS)
+
+k:
+	@kill -TERM $(PID)
 
 %: %.c
 	gcc $(CFLAGS) $< $(LIBS) -o $@

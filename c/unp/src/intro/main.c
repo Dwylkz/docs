@@ -16,21 +16,236 @@
 // network byteorder use big-endian, host-byteorder is cpu dependent
 // while EINTR, we should read again
 
-typedef union endian_t {
-  short s;
-  char c[sizeof(short)];
-} endian_t;
-
+// srvcli frame
+typedef int action_t(int);
 static void sig_chld(int signo)
 {
   pid_t pid;
   int stat;
   while ((pid = waitpid(-1, &stat, WNOHANG)) > 0) {
-    printf("child terminated: pid=%d\n", pid);
+    DLIB_INFO("%d: child terminated: pid=%d", stat, pid);
   }
   return ;
 }
+static void sig_term(int signo)
+{
+  DLIB_INFO("server %d terminated", getpid());
+  exit(0);
+}
+static int so_read(int fd, void* buf, size_t size)
+{
+  int ret;
 
+  while (1) {
+    ret = read(fd, buf, size);
+    if (ret == -1) {
+      if (errno == EINTR) {
+        continue;
+      }
+      DLIB_ERR("%d: read: msg=(%s)", errno, dlib_syserr());
+      return errno;
+    }
+
+    break;
+  }
+  return ret;
+}
+static int so_readline(int fd, char* buf, size_t size)
+{
+  int ret;
+
+  int i = 0;
+  while (i < size) {
+    ret = so_read(fd, buf+i, size);
+    if (ret < 0) {
+      DLIB_ERR("%d: so_read: fd=%d", ret, fd);
+      return -1;
+    }
+
+    if (ret == 0)
+      break;
+    i += ret;
+    if (buf[i-1] == '\n') {
+      i--;
+      break;
+    }
+  }
+  buf[i] = '\0';
+  return ret;
+}
+static int so_write(int fd, void* buf, size_t size)
+{
+  int ret;
+
+  int i = 0;
+  while (i < size) {
+    ret = write(fd, buf, size-i);
+    if (ret == -1) {
+      if (errno == EINTR) {
+        continue;
+      }
+      DLIB_ERR("%d: wrtie: msg=(%s)", errno, dlib_syserr());
+      return errno;
+    }
+    else if (ret == 0) {
+      break;
+    }
+    i += ret;
+  }
+
+  return i;
+}
+static int opentcpsock4(const char* addr, int port, struct sockaddr_in* sockaddr, int* sock)
+{
+  sockaddr->sin_family = AF_INET;
+  sockaddr->sin_port = htons(port);
+  if (strncmp(addr, "*", 1) == 0) {
+    sockaddr->sin_addr.s_addr = htonl(INADDR_ANY);
+  } else if (inet_aton(addr, &sockaddr->sin_addr) == 0) {
+    DLIB_ERR("%d: inet_aton: msg=(%s)", errno, dlib_syserr());
+    return -1;
+  }
+
+  *sock = socket(AF_INET, SOCK_STREAM, getprotobyname("tcp")->p_proto);
+  if (*sock == -1) {
+    DLIB_ERR("%d: socket: msg=(%s)", errno, dlib_syserr());
+    return -2;
+  }
+  return 0;
+}
+static int srv_frame(int argc, char** argv, action_t* action)
+{
+  const int BACKLOG = 10;
+
+  int ret = 0;
+
+  DLIB_INFO("%s server begin at pid %d", argv[0], getpid());
+
+  if (argc != 2) {
+    return -2;
+  }
+
+  int port;
+  if (sscanf(argv[1], "%d", &port) != 1) {
+    DLIB_ERR("%d: sscanf: argv=(%s) msg=(%s)", errno, argv[1], dlib_syserr());
+    return -2;
+  }
+
+  struct sockaddr_in srvaddr;
+  int srvsock;
+  ret = opentcpsock4("*", port, &srvaddr, &srvsock);
+  if (ret < 0) {
+    DLIB_ERR("%d: opentcpsock4: addr=(%s) port=%d", errno, "*", port);
+    return -1;
+  }
+
+  ret = bind(srvsock, (struct sockaddr*)&srvaddr, sizeof(srvaddr));
+  if (ret == -1) {
+    DLIB_ERR("%d: bind: msg=(%s)", errno, dlib_syserr());
+    return -1;
+  }
+
+  ret = listen(srvsock, BACKLOG);
+  if (ret == -1) {
+    DLIB_ERR("%d: listen: msg=(%s)", errno, dlib_syserr());
+    return -1;
+  }
+
+  signal(SIGCHLD, sig_chld);
+  signal(SIGTERM, sig_term);
+
+  while (1) {
+    struct sockaddr_in peeraddr;
+    socklen_t peeraddr_len;
+    int clisock = accept(srvsock, (struct sockaddr*)&peeraddr, &peeraddr_len);
+    if (clisock == -1) {
+      if (errno == EINTR) {
+        DLIB_INFO("%d: accept was interupted: msg=(%s)", errno, dlib_syserr());
+        continue;
+      }
+
+      DLIB_ERR("%d: accept: msg=(%s)", errno, dlib_syserr());
+      return -1;
+    }
+
+    struct sockaddr_in localaddr;
+    socklen_t localaddr_len = sizeof(localaddr);
+    ret = getsockname(clisock, (struct sockaddr*)&localaddr, &localaddr_len);
+    if (ret == -1) {
+      DLIB_ERR("%d: getsockname: msg=%s", errno, dlib_syserr());
+      return -1;
+    }
+
+    DLIB_INFO("server %s:%hu", inet_ntoa(localaddr.sin_addr), ntohs(localaddr.sin_port));
+    DLIB_INFO("client %s:%hu", inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
+
+    pid_t pid = fork();
+    if (pid == -1) {
+      DLIB_ERR("%d: fork: msg=(%s)", errno, dlib_syserr());
+      return -1;
+    }
+
+    if (pid > 0) {
+      DLIB_INFO("fork %d", pid);
+      close(clisock);
+      continue;
+    }
+
+    signal(SIGTERM, SIG_IGN);
+    close(srvsock);
+    ret = action(clisock);
+    close(clisock);
+    return ret;
+  }
+
+  close(srvsock);
+  return 0;
+}
+static int cli_frame(int argc, char** argv, action_t* action)
+{
+  int ret = 0;
+
+  if (argc != 3) {
+    return -2;
+  }
+
+  const char* addr = argv[1];
+
+  int port;
+  if (sscanf(argv[2], "%d", &port) != 1) {
+    DLIB_ERR("unexpect port: port=(%s)", argv[2]);
+    return -2;
+  }
+
+  struct sockaddr_in sockaddr;
+  int sock;
+  ret = opentcpsock4(addr, port, &sockaddr, &sock);
+  if (ret < 0) {
+    DLIB_ERR("%d: opentcpsock4: addr=(%s) port=%d", errno, addr, port);
+    return ret;
+  }
+
+  while (1) {
+    ret = connect(sock, (struct sockaddr*)&sockaddr, sizeof(sockaddr));
+    if (ret == -1) {
+      if (ret == EINTR) {
+        continue;
+      }
+      DLIB_ERR("%d: connect: addr=(%s) port=%d msg=(%s)", errno, addr, port, dlib_syserr());
+      return -1;
+    }
+    break;
+  }
+  ret = action(sock);
+  close(sock);
+  return ret;
+}
+// srvcliframe
+
+typedef union endian_t {
+  short s;
+  char c[sizeof(short)];
+} endian_t;
 static const char* system_endian()
 {
   int ret = 0;
@@ -49,7 +264,6 @@ static const char* system_endian()
     ret = 2;
   return msg[ret];
 }
-
 static const char* endian_show(endian_t* s)
 {
   static char foo[BUFSIZ];
@@ -369,7 +583,8 @@ static int tcpserv01(int argc, char** argv)
     return -1;
   }
 
-  Signal(SIGCHLD, sig_chld);
+  // Signal(SIGCHLD, sig_chld);
+  Signal(SIGCHLD, SIG_IGN);
 
   while (1) {
     struct sockaddr_in clientaddr;
@@ -399,14 +614,14 @@ static int tcpserv01(int argc, char** argv)
            inet_ntop(AF_INET, (SA*)&clientaddr, foo, INET_ADDRSTRLEN),
            ntohs(clientaddr.sin_port));
 
-    if (getpeername(clifd, (SA*)&serveraddr, &serveraddr_len) < 0) {
-      DLIB_ERR("getpeername failed: (%s)", dlib_syserr());
-      return -1;
-    }
+    // if (getpeername(clifd, (SA*)&serveraddr, &serveraddr_len) < 0) {
+    //   DLIB_ERR("getpeername failed: (%s)", dlib_syserr());
+    //   return -1;
+    // }
 
-    printf("perr addr: ip=(%s),port=(%hu)\n",
-           inet_ntop(AF_INET, (SA*)&clientaddr, foo, INET_ADDRSTRLEN),
-           ntohs(clientaddr.sin_port));
+    // printf("perr addr: ip=(%s),port=(%hu)\n",
+    //        inet_ntop(AF_INET, (SA*)&clientaddr, foo, INET_ADDRSTRLEN),
+    //        ntohs(clientaddr.sin_port));
 
     int pid = fork();
     if (pid == -1) {
@@ -427,13 +642,34 @@ static int tcpserv01(int argc, char** argv)
   return 0;
 }
 
+static int str_cli11(FILE* infile, int sockfd)
+{
+  static char foo[MAXLINE];
+  while (Fgets(foo, MAXLINE, infile)) {
+    Writen(sockfd, foo, 1);
+    sleep(1);
+    Writen(sockfd, foo+1, strlen(foo)-1);
+    if (Readline(sockfd, foo, MAXLINE) == 0) {
+      DLIB_ERR("Readline: sockfd=%d", sockfd);
+      return -1;
+    }
+    Fputs(foo, stdout);
+  }
+  return 0;
+}
+
 static int tcpcli01(int argc, char** argv)
 {
-  if (argc != 3)
+  if (argc != 4)
     return -2;
 
   const char* server_addr_str = argv[1];
-  int need_redirect = argv[2][0]-'0';
+  int port;
+  if (sscanf(argv[2], "%d", &port) != 1) {
+    DLIB_ERR("%d: sscanf: msg=(%s)", errno, dlib_syserr());
+    return -2;
+  }
+  int need_redirect = argv[3][0]-'0';
 
   struct sockaddr_in server_addr;
   server_addr.sin_family = AF_INET;
@@ -441,7 +677,7 @@ static int tcpcli01(int argc, char** argv)
     DLIB_ERR("inet_pton failed: (%s)", dlib_syserr());
     return -1;
   }
-  server_addr.sin_port = htons(SERV_PORT);
+  server_addr.sin_port = htons(port);
 
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (connect(sockfd, (SA*)&server_addr, sizeof(server_addr)) < 0) {
@@ -452,7 +688,9 @@ static int tcpcli01(int argc, char** argv)
   if (need_redirect)
     freopen("in", "r", stdin);
 
-  str_cli(stdin, sockfd);
+  // str_cli(stdin, sockfd);
+  if (str_cli11(stdin, sockfd) < 0)
+    return -1;
   close(sockfd);
   return 0;
 }
@@ -460,6 +698,103 @@ static int tcpcli01(int argc, char** argv)
 static int tcpcli01test(int argc, char** argv)
 {
   return multiplex(argc, argv, tcpcli01);
+}
+
+static int echo_action(int sock)
+{
+  str_echo(sock);
+  return 0;
+}
+static int echosrv(int argc, char** argv)
+{
+  return srv_frame(argc, argv, echo_action);
+}
+
+static int plus_srvaction(int sock)
+{
+  int ret;
+
+  char foo[BUFSIZ+1];
+  char bar[BUFSIZ+1];
+  while (1) {
+    ret = so_readline(sock, foo, BUFSIZ);
+    if (ret < 0) {
+      DLIB_ERR("%d: so_readline: sock=%d", ret, sock);
+      return -1;
+    }
+
+    if (strncmp(foo, "end", 3) == 0) {
+      DLIB_INFO("passive terminated");
+      break;
+    }
+
+    int a, b;
+    if (sscanf(foo, "%d%d", &a, &b) != 2) {
+      sprintf(bar, "invalid input (%s), expect two integer or 'end'\n", foo);
+    }
+    else {
+      sprintf(bar, "%d\n", a+b);
+    }
+
+    ret = so_write(sock, bar, strnlen(bar, BUFSIZ));
+    if (ret < 0) {
+      DLIB_ERR("%d: so_write: sock=%d buf=(%s)", ret, sock, foo);
+      return -1;
+    }
+  }
+  return 0;
+}
+static int plus_cliaction(int sock)
+{
+  int ret;
+
+  time_t begin = time(NULL);
+  puts("welcome to plussrv");
+  printf("start at %s", ctime(&begin));
+
+  char foo[BUFSIZ+1];
+  while (1) {
+    printf("plussrv> ");
+    char* str = fgets(foo, BUFSIZ, stdin);
+    if (str == NULL) {
+      if (feof(stdin) != 0) {
+        sprintf(foo, "end");
+      } else if (ferror(stdin) != 0) {
+        DLIB_ERR("%d: fgets: msg=(%s)", errno, dlib_syserr());
+        return errno;
+      }
+    }
+
+    ret = so_write(sock, foo, strnlen(foo, BUFSIZ));
+    if (ret < 0) {
+      DLIB_ERR("%d: so_write: buf=(%s)", ret, foo);
+      return ret;
+    }
+
+    if (strncmp(foo, "end", 3) == 0) {
+      time_t end = time(NULL);
+      printf("last for %lds, end at %s", end-begin, ctime(&end));
+      break;
+    }
+
+    ret = so_read(sock, foo, BUFSIZ);
+    if (ret < 0) {
+      DLIB_ERR("%d: so_read", ret);
+      return ret;
+    }
+    foo[ret] = '\0';
+
+    printf("%s", foo);
+  }
+  return 0;
+}
+static int plussrv(int argc, char** argv)
+{
+  return srv_frame(argc, argv, plus_srvaction);
+}
+static int pluscli(int argc, char** argv)
+{
+  return cli_frame(argc, argv, plus_cliaction);
 }
 
 int main(int argc, char** argv)
@@ -475,7 +810,10 @@ int main(int argc, char** argv)
     DLIB_CMD_DEFINE(multireq, "<times> <ip-address>"),
     DLIB_CMD_DEFINE(tcpserv01, ""),
     DLIB_CMD_DEFINE(tcpcli01, "<ip-address>"),
-    DLIB_CMD_DEFINE(tcpcli01test, "<times> <ip-address>"),
+    DLIB_CMD_DEFINE(tcpcli01test, "<times> <ip-address> <port>"),
+    DLIB_CMD_DEFINE(echosrv, "<port>"),
+    DLIB_CMD_DEFINE(plussrv, "<port>"),
+    DLIB_CMD_DEFINE(pluscli, "<host> <port>"),
     DLIB_CMD_NULL
   };
   return dlib_subcmd(argc, argv, cmds);
