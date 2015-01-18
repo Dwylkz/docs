@@ -39,7 +39,7 @@ static int so_read(int fd, void* buf, size_t size)
   while (1) {
     ret = read(fd, buf, size);
     if (ret == -1) {
-      if (errno == EINTR) {
+      if (errno == EINTR || errno == EAGAIN) {
         continue;
       }
       DLIB_ERR("%d: read: msg=(%s)", errno, dlib_syserr());
@@ -81,7 +81,7 @@ static int so_write(int fd, void* buf, size_t size)
   while (i < size) {
     ret = write(fd, buf, size-i);
     if (ret == -1) {
-      if (errno == EINTR) {
+      if (errno == EINTR || errno == EAGAIN) {
         continue;
       }
       DLIB_ERR("%d: wrtie: msg=(%s)", errno, dlib_syserr());
@@ -228,7 +228,7 @@ static int cli_frame(int argc, char** argv, action_t* action)
   while (1) {
     ret = connect(sock, (struct sockaddr*)&sockaddr, sizeof(sockaddr));
     if (ret == -1) {
-      if (ret == EINTR) {
+      if (errno == EINTR) {
         continue;
       }
       DLIB_ERR("%d: connect: addr=(%s) port=%d msg=(%s)", errno, addr, port, dlib_syserr());
