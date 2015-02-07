@@ -2,6 +2,7 @@
 #include <sys/file.h>
 #include <unistd.h>
 #include <signal.h>
+#include <boost/smart_ptr.hpp>
 
 #include <cstdio>
 

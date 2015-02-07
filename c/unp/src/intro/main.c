@@ -797,6 +797,86 @@ static int replcli(int argc, char** argv)
   return cli_frame(argc, argv, repl_cliaction);
 }
 
+static int repl_cliaction2(int sock)
+{
+  int ret;
+
+  time_t begin = time(NULL);
+  printf("start at %s", ctime(&begin));
+
+  fd_set fds;
+  int ifd = fileno(stdin);
+  int nfds = (sock>ifd? sock: ifd)+1;
+
+  char foo[BUFSIZ+1];
+  printf("> ");
+  fflush(stdout);
+  while (1) {
+    FD_ZERO(&fds);
+    FD_SET(sock, &fds);
+    FD_SET(ifd, &fds);
+    ret = select(nfds, &fds, NULL, NULL, NULL);
+    if (ret < 0) {
+      if (errno != EAGAIN && errno != EINTR) {
+        DLIB_ERR("%d: select: msg=(%s)", ret, dlib_syserr());
+        return errno;
+      } else {
+        DLIB_INFO("try again");
+        continue;
+      }
+    }
+
+    if (FD_ISSET(sock, &fds))
+    {
+      ret = so_read(sock, foo, BUFSIZ);
+      if (ret < 0) {
+        DLIB_ERR("%d: so_read", ret);
+        return ret;
+      } else if (ret == 0) {
+        printf("\nremote service terminated\n");
+        return 0;
+      }
+
+      foo[ret] = '\0';
+      printf("%s", foo);
+      printf("> ");
+      fflush(stdout);
+    }
+
+    if (FD_ISSET(ifd, &fds))
+    {
+      fflush(stdout);
+      char* str = fgets(foo, BUFSIZ, stdin);
+      if (str == NULL) {
+        if (feof(stdin) != 0) {
+          puts("");
+          sprintf(foo, "end");
+        } else if (ferror(stdin) != 0) {
+          DLIB_ERR("%d: fgets: msg=(%s)", errno, dlib_syserr());
+          return ret;
+        }
+      }
+
+      ret = so_write(sock, foo, strnlen(foo, BUFSIZ));
+      if (ret < 0) {
+        DLIB_ERR("%d: so_write: buf=(%s)", ret, foo);
+        return ret;
+      }
+
+      if (strncmp(foo, "end", 3) == 0) {
+        time_t end = time(NULL);
+        printf("last for %lds, end at %s", end-begin, ctime(&end));
+        break;
+      }
+    }
+  }
+  return 0;
+}
+static int replcli2(int argc, char** argv)
+{
+  return cli_frame(argc, argv, repl_cliaction2);
+}
+
 int main(int argc, char** argv)
 {
   const dlib_cmd_t cmds[] = {
@@ -814,6 +894,7 @@ int main(int argc, char** argv)
     DLIB_CMD_DEFINE(echosrv, "<port>"),
     DLIB_CMD_DEFINE(plussrv, "<port>"),
     DLIB_CMD_DEFINE(replcli, "<host> <port>"),
+    DLIB_CMD_DEFINE(replcli2, "<host> <port>"),
     DLIB_CMD_NULL
   };
   return dlib_subcmd(argc, argv, cmds);

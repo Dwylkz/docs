@@ -2,6 +2,7 @@ CC = gcc
 CFLAGS = -I../unpv13e/lib -Idlib/src -g -O2 -D_REENTRANT 
 LIBS = ../unpv13e/libunp.a -lpthread dlib/src/libdlib.a
 
+PID=4898
 HOST = 127.0.0.1
 PORT = 60008
 HOST6 = ::1
@@ -29,7 +30,8 @@ srv:
 
 cli:
 	@#./main tcpcli01 $(HOST) $(PORT) 0
-	@./main replcli $(HOST) $(PORT)
+	@#./main replcli $(HOST) $(PORT)
+	@./main replcli2 $(HOST) $(PORT)
 
 test:
 	@#./main multireq 10 $(HOST)
@@ -48,7 +50,7 @@ clean:
 	rm -f $(PROGS)
 
 k:
-	@kill -TERM $(PID)
+	@kill -9 $(PID)
 
 %: %.c
 	gcc $(CFLAGS) $< $(LIBS) -o $@
