@@ -16,7 +16,7 @@
 // network byteorder use big-endian, host-byteorder is cpu dependent
 // while EINTR, we should read again
 
-// srvcli frame
+// c/s frame
 typedef int action_t(int);
 static void sig_chld(int signo)
 {
@@ -113,47 +113,9 @@ static int opentcpsock4(const char* addr, int port, struct sockaddr_in* sockaddr
   }
   return 0;
 }
-static int srv_frame(int argc, char** argv, action_t* action)
+static int srv_frame_style_fork(int srvsock, action_t* action)
 {
-  const int BACKLOG = 10;
-
   int ret = 0;
-
-  DLIB_INFO("%s server begin at pid %d", argv[0], getpid());
-
-  if (argc != 2) {
-    return -2;
-  }
-
-  int port;
-  if (sscanf(argv[1], "%d", &port) != 1) {
-    DLIB_ERR("%d: sscanf: argv=(%s) msg=(%s)", errno, argv[1], dlib_syserr());
-    return -2;
-  }
-
-  struct sockaddr_in srvaddr;
-  int srvsock;
-  ret = opentcpsock4("*", port, &srvaddr, &srvsock);
-  if (ret < 0) {
-    DLIB_ERR("%d: opentcpsock4: addr=(%s) port=%d", errno, "*", port);
-    return -1;
-  }
-
-  ret = bind(srvsock, (struct sockaddr*)&srvaddr, sizeof(srvaddr));
-  if (ret == -1) {
-    DLIB_ERR("%d: bind: msg=(%s)", errno, dlib_syserr());
-    return -1;
-  }
-
-  ret = listen(srvsock, BACKLOG);
-  if (ret == -1) {
-    DLIB_ERR("%d: listen: msg=(%s)", errno, dlib_syserr());
-    return -1;
-  }
-
-  signal(SIGCHLD, sig_chld);
-  signal(SIGTERM, sig_term);
-
   while (1) {
     struct sockaddr_in peeraddr;
     socklen_t peeraddr_len;
@@ -191,11 +153,70 @@ static int srv_frame(int argc, char** argv, action_t* action)
       continue;
     }
 
-    signal(SIGTERM, SIG_IGN);
     close(srvsock);
     ret = action(clisock);
     close(clisock);
-    return ret;
+    exit(ret);
+  }
+  return 0;
+}
+static int srv_frame_style_select(int srvsock, action_t* action)
+{
+  return 0;
+}
+static int srv_frame(int argc, char** argv, action_t* action)
+{
+  const char* FORK = "fork";
+  const char* SELECT = "select";
+  const int BACKLOG = 10;
+
+  int ret = 0;
+
+  if (argc != 3) {
+    return -2;
+  }
+
+  int port;
+  if (sscanf(argv[1], "%d", &port) != 1) {
+    DLIB_ERR("%d: sscanf: argv=(%s) msg=(%s)", errno, argv[1], dlib_syserr());
+    return -2;
+  }
+
+  const char* style = argv[2];
+
+  DLIB_INFO("%s server begin at pid %d", argv[0], getpid());
+
+  struct sockaddr_in srvaddr;
+  int srvsock;
+  ret = opentcpsock4("*", port, &srvaddr, &srvsock);
+  if (ret < 0) {
+    DLIB_ERR("%d: opentcpsock4: addr=(%s) port=%d", errno, "*", port);
+    return -1;
+  }
+
+  ret = bind(srvsock, (struct sockaddr*)&srvaddr, sizeof(srvaddr));
+  if (ret == -1) {
+    DLIB_ERR("%d: bind: msg=(%s)", errno, dlib_syserr());
+    return -1;
+  }
+
+  ret = listen(srvsock, BACKLOG);
+  if (ret == -1) {
+    DLIB_ERR("%d: listen: msg=(%s)", errno, dlib_syserr());
+    return -1;
+  }
+
+  signal(SIGCHLD, sig_chld);
+  signal(SIGTERM, sig_term);
+
+  DLIB_INFO("attempt to use %s multiplex style", style);
+  if (strncmp(style, FORK, strlen(FORK)) == 0) {
+    srv_frame_style_fork(srvsock, action);
+  } else if (strncmp(style, SELECT, strlen(SELECT)) == 0) {
+    srv_frame_style_select(srvsock, action);
+  } else {
+    DLIB_ERR("unknow multiplex style: style=(%s)", style);
+    return -2;
   }
 
   close(srvsock);
@@ -240,7 +261,28 @@ static int cli_frame(int argc, char** argv, action_t* action)
   close(sock);
   return ret;
 }
-// srvcliframe
+static int multiplex(int argc, char** argv, int (*action)(int, char**))
+{
+  if (argc < 2)
+    return -2;
+
+  uint32_t times;
+  if (sscanf(argv[1], "%u", &times) != 1)
+    return -2;
+
+  while (times--) {
+    int pid = fork();
+    if (pid == -1) {
+      DLIB_ERR("fork failed: (%s)", dlib_syserr());
+      return -1;
+    }
+    if (pid == 0) {
+      exit(action(argc-1, argv+1));
+    }
+  }
+  return 0;
+}
+// c/s frame
 
 typedef union endian_t {
   short s;
@@ -280,28 +322,6 @@ static int inet_pton_loose(int af, const char* restrict src, void* restrict dst)
   if (inet_pton(af, src, dst) != 1)
     return inet_aton(src, dst);
   return 1;
-}
-
-static int multiplex(int argc, char** argv, int (*action)(int, char**))
-{
-  if (argc < 2)
-    return -2;
-
-  uint32_t times;
-  if (sscanf(argv[1], "%u", &times) != 1)
-    return -2;
-
-  while (times--) {
-    int pid = fork();
-    if (pid == -1) {
-      DLIB_ERR("fork failed: (%s)", dlib_syserr());
-      return -1;
-    }
-    if (pid == 0) {
-      exit(action(argc-1, argv+1));
-    }
-  }
-  return 0;
 }
 
 static int basic(int argc, char** argv)
@@ -724,7 +744,7 @@ static int plus_srvaction(int sock)
     }
 
     if (strncmp(foo, "end", 3) == 0) {
-      DLIB_INFO("passive terminated");
+      DLIB_INFO("passtive terminated");
       break;
     }
 
@@ -892,7 +912,7 @@ int main(int argc, char** argv)
     DLIB_CMD_DEFINE(tcpcli01, "<ip-address>"),
     DLIB_CMD_DEFINE(tcpcli01test, "<times> <ip-address> <port>"),
     DLIB_CMD_DEFINE(echosrv, "<port>"),
-    DLIB_CMD_DEFINE(plussrv, "<port>"),
+    DLIB_CMD_DEFINE(plussrv, "<port> [<style = 'fork' | 'select'>]"),
     DLIB_CMD_DEFINE(replcli, "<host> <port>"),
     DLIB_CMD_DEFINE(replcli2, "<host> <port>"),
     DLIB_CMD_NULL

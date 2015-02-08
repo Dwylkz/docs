@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -I../unpv13e/lib -Idlib/src -g -O2 -D_REENTRANT 
 LIBS = ../unpv13e/libunp.a -lpthread dlib/src/libdlib.a
 
-PID=4898
+PID=7633
 HOST = 127.0.0.1
 PORT = 60008
 HOST6 = ::1
@@ -26,7 +26,8 @@ srv:
 	@#./main daytimetcpsrv
 	@#./main tcpserv01
 	@#./main echosrv $(PORT)
-	@./main plussrv $(PORT)
+	@./main plussrv $(PORT) fork
+	@#./main plussrv $(PORT) select
 
 cli:
 	@#./main tcpcli01 $(HOST) $(PORT) 0
@@ -50,7 +51,7 @@ clean:
 	rm -f $(PROGS)
 
 k:
-	@kill -9 $(PID)
+	@kill -TERM $(PID)
 
 %: %.c
 	gcc $(CFLAGS) $< $(LIBS) -o $@
