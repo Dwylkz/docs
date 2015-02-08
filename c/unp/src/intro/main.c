@@ -113,13 +113,35 @@ static int opentcpsock4(const char* addr, int port, struct sockaddr_in* sockaddr
   }
   return 0;
 }
+static int logcsinfo(int sock)
+{
+  int ret = 0;
+
+  struct sockaddr_in localaddr;
+  socklen_t localaddr_len = sizeof(localaddr);
+  ret = getsockname(sock, (struct sockaddr*)&localaddr, &localaddr_len);
+  if (ret == -1) {
+    DLIB_ERR("%d: getsockname: msg=%s", errno, dlib_syserr());
+    return -1;
+  }
+
+  struct sockaddr_in peeraddr;
+  socklen_t peeraddr_len = sizeof(peeraddr);
+  ret = getpeername(sock, (struct sockaddr*)&peeraddr, &peeraddr_len);
+  if (ret == -1) {
+    DLIB_ERR("%d: getpeername: msg=%s", errno, dlib_syserr());
+    return -1;
+  }
+
+  DLIB_INFO("server %s:%hu", inet_ntoa(localaddr.sin_addr), ntohs(localaddr.sin_port));
+  DLIB_INFO("client %s:%hu", inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
+  return 0;
+}
 static int srv_frame_style_fork(int srvsock, action_t* action)
 {
   int ret = 0;
   while (1) {
-    struct sockaddr_in peeraddr;
-    socklen_t peeraddr_len;
-    int clisock = accept(srvsock, (struct sockaddr*)&peeraddr, &peeraddr_len);
+    int clisock = accept(srvsock, NULL, NULL);
     if (clisock == -1) {
       if (errno == EINTR) {
         DLIB_INFO("%d: accept was interupted: msg=(%s)", errno, dlib_syserr());
@@ -130,16 +152,11 @@ static int srv_frame_style_fork(int srvsock, action_t* action)
       return -1;
     }
 
-    struct sockaddr_in localaddr;
-    socklen_t localaddr_len = sizeof(localaddr);
-    ret = getsockname(clisock, (struct sockaddr*)&localaddr, &localaddr_len);
-    if (ret == -1) {
-      DLIB_ERR("%d: getsockname: msg=%s", errno, dlib_syserr());
-      return -1;
+    ret = logcsinfo(clisock);
+    if (ret < 0) {
+      DLIB_ERR("%d: logcsinfo: sock=%d", ret, clisock);
+      return ret;
     }
-
-    DLIB_INFO("server %s:%hu", inet_ntoa(localaddr.sin_addr), ntohs(localaddr.sin_port));
-    DLIB_INFO("client %s:%hu", inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
 
     pid_t pid = fork();
     if (pid == -1) {
@@ -162,6 +179,91 @@ static int srv_frame_style_fork(int srvsock, action_t* action)
 }
 static int srv_frame_style_select(int srvsock, action_t* action)
 {
+  int ret = 0;
+
+  int8_t fds[FD_SETSIZE];
+  memset(fds, -1, sizeof(fds));
+
+  int fdsi = 0;
+  fds[fdsi++] = srvsock;
+
+  fd_set fdset;
+  int maxfd = srvsock;
+  while (1) {
+    FD_ZERO(&fdset);
+    for (int i = 0; i < fdsi; i++)
+      if (fds[i] != -1)
+        FD_SET(fds[i], &fdset);
+
+    ret = select(maxfd+1, &fdset, NULL, NULL, NULL);
+    if (ret < 0) {
+      if (errno == EAGAIN || errno == EINTR) {
+        continue;
+      } else {
+        DLIB_ERR("%d: %s", errno, dlib_syserr());
+        return ret;
+      }
+    }
+
+    if (FD_ISSET(srvsock, &fdset)) {
+      int clisock = accept(srvsock, NULL, NULL);
+      if (clisock < 0) {
+        if (errno == EINTR) {
+          continue;
+        } else {
+          DLIB_ERR("%d: %s", errno, dlib_syserr());
+          return clisock;
+        }
+      }
+
+      ret = logcsinfo(clisock);
+      if (ret < 0) {
+        DLIB_ERR("%d: logcsinfo: sock=%d", ret, clisock);
+        return ret;
+      }
+
+      int i = 0;
+      while (i < fdsi)
+        if (fds[i] == -1)
+          break;
+        else
+          i++;
+      if (i == fdsi)
+        fdsi++;
+      fds[i] = clisock;
+
+      if (clisock > maxfd)
+        maxfd = clisock;
+
+      DLIB_INFO("open fd: fd=%d", fds[i]);
+    } else {
+      for (int i = 1; i < fdsi; i++) {
+        if (fds[i] == -1 || !FD_ISSET(fds[i], &fdset))
+          continue;
+        ret = action(fds[i]);
+        if (ret < 0) {
+          DLIB_ERR("%d: action: sock=%d", ret, fds[i]);
+          return ret;
+        } else if (ret == 0) {
+          DLIB_INFO("close fd: fd=%d", fds[i]);
+
+          close(fds[i]);
+
+          fds[i] = -1;
+          while (fds[fdsi-1] == -1)
+            fdsi--;
+
+          maxfd = srvsock;
+          for (int j = 1; j < fdsi; j++)
+            if (fds[j] != -1 && fds[j] > maxfd)
+              maxfd = fds[j];
+        }
+        break;
+      }
+    }
+
+    DLIB_INFO("fdsi=%d maxfd=%d", fdsi, maxfd);
+  }
   return 0;
 }
 static int srv_frame(int argc, char** argv, action_t* action)
@@ -730,9 +832,54 @@ static int echosrv(int argc, char** argv)
   return srv_frame(argc, argv, echo_action);
 }
 
+static int plus_action(int sock, const char* foo, char* bar)
+{
+  int ret = 0;
+
+  int a, b;
+  if (sscanf(foo, "%d%d", &a, &b) != 2) {
+    sprintf(bar, "invalid input (%s), expect two integer or 'end'\n", foo);
+  } else {
+    sprintf(bar, "%d\n", a+b);
+  }
+
+  ret = so_write(sock, bar, strnlen(bar, BUFSIZ));
+  if (ret < 0) {
+    DLIB_ERR("%d: so_write: sock=%d buf=(%s)", ret, sock, foo);
+    return -1;
+  }
+  return 0;
+}
+static int plus_once_srvaction(int sock)
+{
+  int ret = 0;
+
+  char foo[BUFSIZ+1];
+  char bar[BUFSIZ+1];
+  ret = so_readline(sock, foo, BUFSIZ);
+  if (ret < 0) {
+    DLIB_ERR("%d: so_readline: sock=%d", ret, sock);
+    return -1;
+  }
+
+  int nread = ret;
+
+  if (strncmp(foo, "end", 3) == 0) {
+    DLIB_INFO("passtive terminated");
+    return 0;
+  }
+
+  sleep(1);
+  ret = plus_action(sock, foo, bar);
+  if (ret < 0) {
+    DLIB_ERR("%d: plus_action: sock=%d foo=(%s)", ret, sock, foo);
+    return ret;
+  }
+  return nread;
+}
 static int plus_srvaction(int sock)
 {
-  int ret;
+  int ret = 0;
 
   char foo[BUFSIZ+1];
   char bar[BUFSIZ+1];
@@ -748,17 +895,10 @@ static int plus_srvaction(int sock)
       break;
     }
 
-    int a, b;
-    if (sscanf(foo, "%d%d", &a, &b) != 2) {
-      sprintf(bar, "invalid input (%s), expect two integer or 'end'\n", foo);
-    } else {
-      sprintf(bar, "%d\n", a+b);
-    }
-
-    ret = so_write(sock, bar, strnlen(bar, BUFSIZ));
+    ret = plus_action(sock, foo, bar);
     if (ret < 0) {
-      DLIB_ERR("%d: so_write: sock=%d buf=(%s)", ret, sock, foo);
-      return -1;
+      DLIB_ERR("%d: plus_action: sock=%d foo=(%s)", ret, sock, foo);
+      return ret;
     }
   }
   return 0;
@@ -766,6 +906,10 @@ static int plus_srvaction(int sock)
 static int plussrv(int argc, char** argv)
 {
   return srv_frame(argc, argv, plus_srvaction);
+}
+static int plussrv2(int argc, char** argv)
+{
+  return srv_frame(argc, argv, plus_once_srvaction);
 }
 
 static int repl_cliaction(int sock)
@@ -913,6 +1057,7 @@ int main(int argc, char** argv)
     DLIB_CMD_DEFINE(tcpcli01test, "<times> <ip-address> <port>"),
     DLIB_CMD_DEFINE(echosrv, "<port>"),
     DLIB_CMD_DEFINE(plussrv, "<port> [<style = 'fork' | 'select'>]"),
+    DLIB_CMD_DEFINE(plussrv2, "<port> [<style = 'fork' | 'select'>]"),
     DLIB_CMD_DEFINE(replcli, "<host> <port>"),
     DLIB_CMD_DEFINE(replcli2, "<host> <port>"),
     DLIB_CMD_NULL
