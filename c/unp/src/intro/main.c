@@ -869,7 +869,10 @@ static int plus_once_srvaction(int sock)
     return 0;
   }
 
-  sleep(1);
+  // sleep 500ms
+  struct timeval tv = {0, 5e5};
+  select(0, NULL, NULL, NULL, &tv);
+
   ret = plus_action(sock, foo, bar);
   if (ret < 0) {
     DLIB_ERR("%d: plus_action: sock=%d foo=(%s)", ret, sock, foo);
