@@ -1,4 +1,4 @@
-main: main.scm
+MAKEFLAGS=ks
 
-%: %.scm
-	tsocks racket -f $<
+main: main.scm
+	csi -s main.scm

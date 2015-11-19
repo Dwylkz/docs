@@ -5,10 +5,18 @@ main: main.c
 
 run:
 	# make ls
-	make ubio
+	# make ubio
+	make runcmd
+	# make ugid
 
 ls:
 	./main ls
 
 ubio:
 	./main ubio
+
+runcmd:
+	./main runcmd
+
+ugid:
+	./main ugid
