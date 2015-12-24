@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <semaphore.h>
 #include <sys/mman.h>
+#include <sys/fcntl.h>
 
 #include "dlib_comm.h"
 
