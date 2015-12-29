@@ -363,27 +363,6 @@ static int cli_frame(int argc, char** argv, action_t* action)
   close(sock);
   return ret;
 }
-static int multiplex(int argc, char** argv, int (*action)(int, char**))
-{
-  if (argc < 2)
-    return -2;
-
-  uint32_t times;
-  if (sscanf(argv[1], "%u", &times) != 1)
-    return -2;
-
-  while (times--) {
-    int pid = fork();
-    if (pid == -1) {
-      DLIB_ERR("fork failed: (%s)", dlib_syserr());
-      return -1;
-    }
-    if (pid == 0) {
-      exit(action(argc-1, argv+1));
-    }
-  }
-  return 0;
-}
 // c/s frame
 
 typedef union endian_t {
@@ -680,7 +659,7 @@ err_0:
 
 static int multireq(int argc, char** argv)
 {
-  return multiplex(argc, argv, daytimetcpcli);
+  return dlib_subcmd_mutiplex(argc, argv, daytimetcpcli);
 }
 
 static int tcpserv01(int argc, char** argv)
@@ -820,7 +799,7 @@ static int tcpcli01(int argc, char** argv)
 
 static int tcpcli01test(int argc, char** argv)
 {
-  return multiplex(argc, argv, tcpcli01);
+  return dlib_subcmd_mutiplex(argc, argv, tcpcli01);
 }
 
 static int echo_action(int sock)
