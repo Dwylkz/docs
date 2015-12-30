@@ -32,69 +32,6 @@ static void sig_term(int signo)
   DLIB_INFO("server %d terminated", getpid());
   exit(0);
 }
-static int so_read(int fd, void* buf, size_t size)
-{
-  int ret;
-
-  while (1) {
-    ret = read(fd, buf, size);
-    if (ret == -1) {
-      if (errno == EINTR || errno == EAGAIN) {
-        continue;
-      }
-      DLIB_ERR("%d: read: msg=(%s)", errno, dlib_syserr());
-      return errno;
-    }
-
-    break;
-  }
-  return ret;
-}
-static int so_readline(int fd, char* buf, size_t size)
-{
-  int ret;
-
-  int i = 0;
-  while (i < size) {
-    ret = so_read(fd, buf+i, size);
-    if (ret < 0) {
-      DLIB_ERR("%d: so_read: fd=%d", ret, fd);
-      return -1;
-    }
-
-    if (ret == 0)
-      break;
-    i += ret;
-    if (buf[i-1] == '\n') {
-      i--;
-      break;
-    }
-  }
-  buf[i] = '\0';
-  return ret;
-}
-static int so_write(int fd, void* buf, size_t size)
-{
-  int ret;
-
-  int i = 0;
-  while (i < size) {
-    ret = write(fd, buf, size-i);
-    if (ret == -1) {
-      if (errno == EINTR || errno == EAGAIN) {
-        continue;
-      }
-      DLIB_ERR("%d: wrtie: msg=(%s)", errno, dlib_syserr());
-      return errno;
-    }
-    else if (ret == 0) {
-      break;
-    }
-    i += ret;
-  }
-
-  return i;
-}
 static int opentcpsock4(const char* addr, int port, struct sockaddr_in* sockaddr, int* sock)
 {
   sockaddr->sin_family = AF_INET;
@@ -823,9 +760,9 @@ static int plus_action(int sock, const char* foo, char* bar)
     sprintf(bar, "%d\n", a+b);
   }
 
-  ret = so_write(sock, bar, strnlen(bar, BUFSIZ));
+  ret = dlib_so_write(sock, bar, strnlen(bar, BUFSIZ));
   if (ret < 0) {
-    DLIB_ERR("%d: so_write: sock=%d buf=(%s)", ret, sock, foo);
+    DLIB_ERR("%d: dlib_so_write: sock=%d buf=(%s)", ret, sock, foo);
     return -1;
   }
   return 0;
@@ -836,9 +773,9 @@ static int plus_once_srvaction(int sock)
 
   char foo[BUFSIZ+1];
   char bar[BUFSIZ+1];
-  ret = so_readline(sock, foo, BUFSIZ);
+  ret = dlib_so_readline(sock, foo, BUFSIZ);
   if (ret < 0) {
-    DLIB_ERR("%d: so_readline: sock=%d", ret, sock);
+    DLIB_ERR("%d: dlib_so_readline: sock=%d", ret, sock);
     return -1;
   }
 
@@ -867,9 +804,9 @@ static int plus_srvaction(int sock)
   char foo[BUFSIZ+1];
   char bar[BUFSIZ+1];
   while (1) {
-    ret = so_readline(sock, foo, BUFSIZ);
+    ret = dlib_so_readline(sock, foo, BUFSIZ);
     if (ret < 0) {
-      DLIB_ERR("%d: so_readline: sock=%d", ret, sock);
+      DLIB_ERR("%d: dlib_so_readline: sock=%d", ret, sock);
       return -1;
     }
 
@@ -916,9 +853,9 @@ static int repl_cliaction(int sock)
       }
     }
 
-    ret = so_write(sock, foo, strnlen(foo, BUFSIZ));
+    ret = dlib_so_write(sock, foo, strnlen(foo, BUFSIZ));
     if (ret < 0) {
-      DLIB_ERR("%d: so_write: buf=(%s)", ret, foo);
+      DLIB_ERR("%d: dlib_so_write: buf=(%s)", ret, foo);
       return ret;
     }
 
@@ -928,9 +865,9 @@ static int repl_cliaction(int sock)
       break;
     }
 
-    ret = so_read(sock, foo, BUFSIZ);
+    ret = dlib_so_read(sock, foo, BUFSIZ);
     if (ret < 0) {
-      DLIB_ERR("%d: so_read", ret);
+      DLIB_ERR("%d: dlib_so_read", ret);
       return ret;
     }
     foo[ret] = '\0';
@@ -975,9 +912,9 @@ static int repl_cliaction2(int sock)
 
     if (FD_ISSET(sock, &fds))
     {
-      ret = so_read(sock, foo, BUFSIZ);
+      ret = dlib_so_read(sock, foo, BUFSIZ);
       if (ret < 0) {
-        DLIB_ERR("%d: so_read", ret);
+        DLIB_ERR("%d: dlib_so_read", ret);
         return ret;
       } else if (ret == 0) {
         printf("\nremote service terminated\n");
@@ -1004,9 +941,9 @@ static int repl_cliaction2(int sock)
         }
       }
 
-      ret = so_write(sock, foo, strnlen(foo, BUFSIZ));
+      ret = dlib_so_write(sock, foo, strnlen(foo, BUFSIZ));
       if (ret < 0) {
-        DLIB_ERR("%d: so_write: buf=(%s)", ret, foo);
+        DLIB_ERR("%d: dlib_so_write: buf=(%s)", ret, foo);
         return ret;
       }
 
