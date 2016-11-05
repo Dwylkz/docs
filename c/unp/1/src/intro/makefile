@@ -21,19 +21,19 @@ run:
 	@#./main daytimetcpcliv6 $(HOST6)
 	@#./main byteorder
 	@#./main bytemanipulation
-	@./main inet_conv
+	@#./main inet_conv
 
 srv:
 	@#./main daytimetcpsrv
 	@#./main tcpserv01
 	@#./main echosrv $(PORT)
 	@#./main plussrv $(PORT) fork
-	@./main plussrv2 $(PORT) select
+	@#./main plussrv2 $(PORT) select
 
 cli:
 	@#./main tcpcli01 $(HOST) $(PORT) 0
 	@#./main replcli $(HOST) $(PORT)
-	@./main replcli2 $(HOST) $(PORT)
+	@#./main replcli2 $(HOST) $(PORT)
 
 test:
 	@#./main multireq 10 $(HOST)
