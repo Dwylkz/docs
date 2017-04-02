@@ -1,0 +1,114 @@
+digraph main
+{
+    n[label="电龙"];
+
+    {
+        land[label="陆"];
+
+        {
+            head[label="头"]
+
+            hs[label="左/右甩头\n建议往攻击方向走或洗脚"];
+            rhs[label="反方向甩头"];
+
+            hfg[label=头插地];
+            fhr[label="角车\n带电时左前方判定变长\n建议站在龙右边即可"];
+
+            hvgun[label="斜向分叉炮\n建议站在正面"];
+            hsgun[label="斜向直炮\n建议平移"];
+
+            head->hs;
+            hs->rhs[label=怒];
+            head->hfg->fhr;
+            head->hvgun;
+            head->hsgun;
+        }
+
+        {
+            wind[label="翼"];
+
+            ws[label="左/右翼拍地\n建议往攻击方向走"];
+            rws[label=反方向翼拍地];
+            bs[label=后退];
+
+            wrs[label="左／右翼扫地\n洗脚"];
+            rwrs[label="反方向扫地"];
+
+            wind->ws;
+            ws->rws[label=怒];
+            ws->bs->rws[label="G"];
+            wind->wrs;
+            wrs->rwrs[label="怒"];
+
+        }
+
+        {
+            turn[label="转体"];
+
+            move[label="转身\n有判定"];
+            tail[label="180摆尾"];
+            tailgun[label="尾炮\n裆部有判定\n建议站在左右侧"];
+
+            turn->move;
+            turn->tail->tailgun;
+            turn->tailgun;
+        }
+
+        {
+            shift[label="位移"];
+
+            rush[label="蓄力飞车\n起飞前一直瞄准\n建议起飞时滚"];
+            rushexp[label="双翼插地\n带电时爆炸\n建议飞扑"];
+            car[label="龙车\n无判定"];
+
+            shift->rush->rushexp;
+            shift->car;
+        }
+
+        land->head;
+        land->wind;
+        land->turn;
+        land->shift;
+    }
+
+    {
+        sky[label="空\n起飞时全身有判定"];
+
+        {
+            sky_head[label="头"];
+
+            shvg[label="分叉炮\n建议正面走"];
+            shs[label="往左下方斩\n建议站龙右边"];
+            sky_head->shvg;
+            sky_head->shs;
+        }
+
+        {
+            sky_tail[label="尾"];
+
+            tfg[label="尾巴插地\n有麻痹效果"];
+            texp[label="地雷\n范围有大中小3种\n一次判定，硬直大\n建议滚进去"];
+            tf[label="前插\n有麻痹效果"];
+
+            sky_tail->tfg->texp[label="G"];
+            sky_tail->tf;
+        }
+
+        {
+            sky_wind[label="翼"];
+
+            swexp[label="下降双翼插地爆炸\n建议水平位移，下降时滚"];
+            swc[label="下降双翼交替插地前进\n建议水平位移，下降时滚"];
+
+            sky_wind->swexp;
+            sky_wind->swc;
+        }
+
+        sky->sky_head;
+        sky->sky_tail;
+        sky->sky_wind;
+    }
+
+    n->land;
+    n->sky;
+}
